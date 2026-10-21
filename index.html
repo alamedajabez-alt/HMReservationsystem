@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HM Lab Reserve | Hospitality Management Laboratory</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="logo">
+      <span class="red-text">HM</span> LAB RESERVE
+    </div>
+    <div class="nav-links">
+      <a href="#labs" class="active">Laboratories</a>
+      <a href="#how-it-works">How It Works</a>
+      <a href="#my-reservations" id="navReservations">My Bookings</a>
+      <a href="#labs" class="btn-quick-reserve">Quick Reserve</a>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <header class="hero">
+    <div class="hero-badge">Official Hospitality Facility Portal</div>
+    <h1>Reserve Your <span class="red-text">Hospitality Workstation</span></h1>
+    <p>Book industry-grade culinary kitchens, mixology bars, fine dining setups, and mock hotel suites instantly for your laboratory sessions.</p>
+    
+    <div class="hero-stats">
+      <div class="stat-item">
+        <span class="stat-number">4+</span>
+        <span class="stat-label">Specialty Labs</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-number">100%</span>
+        <span class="stat-label">Digital Access Pass</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-number">Real-Time</span>
+        <span class="stat-label">Conflict Prevention</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="container" id="labs">
+    
+    <!-- Section Title -->
+    <div class="section-header">
+      <h2>Available Laboratories & Stations</h2>
+      <p>Select your required workstation category below</p>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <button class="filter-btn active" data-filter="all">All Stations</button>
+      <button class="filter-btn" data-filter="kitchen">Culinary Kitchen</button>
+      <button class="filter-btn" data-filter="bar">Mixology & Bar</button>
+      <button class="filter-btn" data-filter="dining">Fine Dining Hall</button>
+      <button class="filter-btn" data-filter="hotel">Mock Hotel Suite</button>
+    </div>
+
+    <!-- Lab Cards Grid (Populated dynamically via JS) -->
+    <div class="lab-grid" id="labGrid">
+      <!-- Injected via script.js -->
+    </div>
+
+    <!-- How It Works Section -->
+    <section class="how-it-works" id="how-it-works">
+      <div class="section-header">
+        <h2>How Laboratory Booking Works</h2>
+        <p>Three simple steps to secure your workstation</p>
+      </div>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-number">01</div>
+          <h3>Select Station & Shift</h3>
+          <p>Choose your required lab setup and pick an available morning, afternoon, or evening time slot.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-number">02</div>
+          <h3>Add Equipment & Details</h3>
+          <p>Input your course code, student ID, and check out specialized tools needed for your practical exam.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-number">03</div>
+          <h3>Get Digital Pass</h3>
+          <p>Instantly receive your reference code and QR entry pass for seamless laboratory check-in.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- My Reservations Section -->
+    <section class="my-reservations-section" id="my-reservations">
+      <div class="section-header">
+        <h2>Active Reservations</h2>
+        <p>View confirmed bookings and access your digital entry passes</p>
+      </div>
+      <div class="reservations-table-container">
+        <table class="reservations-table">
+          <thead>
+            <tr>
+              <th>Ref Code</th>
+              <th>Student Name</th>
+              <th>Station / Lab</th>
+              <th>Date & Shift</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="reservationsTableBody">
+            <!-- Populated via script.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>&copy; 2026 Hospitality Management Department. All rights reserved.</p>
+  </footer>
+
+  <!-- Booking Modal -->
+  <div class="modal-overlay" id="bookingModal">
+    <div class="modal">
+      <button class="close-btn" id="closeModal">&times;</button>
+      <div class="modal-header-tag">Reservation Form</div>
+      <h2>Book: <span id="selectedLabTitle" class="red-text">Station Name</span></h2>
+      
+      <form id="bookingForm">
+        <input type="hidden" id="selectedLabId">
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="studentName">Full Name</label>
+            <input type="text" id="studentName" placeholder="e.g., Maria Santos" required>
+          </div>
+          <div class="form-group">
+            <label for="studentId">Student / Instructor ID</label>
+            <input type="text" id="studentId" placeholder="e.g., 2024-00123" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="courseCode">Course / Subject Code</label>
+          <input type="text" id="courseCode" placeholder="e.g., HM-101 Culinary Arts Fundamentals" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="resDate">Reservation Date</label>
+            <input type="date" id="resDate" required>
+          </div>
+          <div class="form-group">
+            <label for="resTime">Time Shift</label>
+            <select id="resTime" required>
+              <option value="">Select Shift</option>
+              <option value="08:00 AM - 11:00 AM">Morning Shift (08:00 AM - 11:00 AM)</option>
+              <option value="01:00 PM - 04:00 PM">Afternoon Shift (01:00 PM - 04:00 PM)</option>
+              <option value="05:00 PM - 08:00 PM">Evening Shift (05:00 PM - 08:00 PM)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Special Equipment / Add-on Checklist</label>
+          <div class="equipment-checkbox-group" id="equipmentChecklist">
+            <label class="checkbox-label"><input type="checkbox" name="equipment" value="1"> Sous Vide Precision Cooker</label>
+            <label class="checkbox-label"><input type="checkbox" name="equipment" value="2"> Commercial Sous Chef Mixer</label>
+            <label class="checkbox-label"><input type="checkbox" name="equipment" value="3"> Espresso Grinder & Bar Tools</label>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-submit">Confirm Reservation Request</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Digital Pass Modal -->
+  <div class="modal-overlay" id="passModal">
+    <div class="modal pass-modal-content">
+      <button class="close-btn" id="closePassModal">&times;</button>
+      <div class="pass-badge-header">OFFICIAL LABORATORY ENTRY PASS</div>
+      
+      <div class="pass-card" id="printablePass">
+        <div class="pass-header">
+          <div>
+            <h3 id="passLabName">Culinary Station 01</h3>
+            <span id="passRefCode" class="pass-ref">HM-RES-A1B2C</span>
+          </div>
+          <div class="pass-qr-box">
+            <div class="simulated-qr"></div>
+            <span>QR Pass</span>
+          </div>
+        </div>
+        
+        <div class="pass-body">
+          <div class="pass-row">
+            <span>Student Name:</span>
+            <strong id="passStudentName">Maria Santos</strong>
+          </div>
+          <div class="pass-row">
+            <span>Student ID:</span>
+            <strong id="passStudentId">2024-00123</strong>
+          </div>
+          <div class="pass-row">
+            <span>Course Code:</span>
+            <strong id="passCourseCode">HM-101</strong>
+          </div>
+          <div class="pass-row">
+            <span>Date & Shift:</span>
+            <strong id="passDateTime">2026-06-15 | Morning Shift</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="pass-actions">
+        <button class="btn-print" onclick="window.print()">Print Pass</button>
+        <button class="btn-done" id="closePassBtn">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
