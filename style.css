@@ -624,3 +624,60 @@ body {
     border: 2px solid #000;
   }
 }
+/* ===== Additions: validation, availability, lookup, a11y ===== */
+.form-error {
+  background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B;
+  padding: 0.7rem 0.9rem; border-radius: 8px; font-size: 0.82rem; margin-top: 0.75rem;
+}
+.form-error[hidden] { display: none; }
+.field-hint { font-size: 0.78rem; color: var(--text-muted); min-height: 1rem; margin-top: -0.4rem; }
+.field-hint.warn { color: #B45309; font-weight: 600; }
+.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+.checkbox-label.disabled { color: var(--text-muted); text-decoration: line-through; cursor: not-allowed; }
+.empty-cell { text-align: center; color: var(--text-muted); }
+.empty-state { grid-column: 1 / -1; text-align: center; color: var(--text-muted); }
+.row-sub { display: block; color: var(--text-muted); font-size: 0.75rem; margin-top: 0.15rem; }
+.status-badge { background: rgba(22, 163, 74, 0.1); color: var(--success-green); text-transform: capitalize; }
+
+.lookup-form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; }
+.lookup-form label { font-size: 0.8rem; font-weight: 600; }
+.lookup-form input {
+  padding: 0.65rem 0.8rem; border: 1px solid var(--border-color); border-radius: 8px;
+  background: var(--bg-card); font-size: 0.875rem; min-width: 220px;
+}
+.btn-lookup {
+  background: var(--primary-red); color: #fff; border: none; padding: 0.65rem 1.1rem;
+  border-radius: 8px; font-weight: 600; cursor: pointer;
+}
+.btn-lookup:hover { background: var(--primary-red-hover); }
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--primary-red); outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .navbar { flex-direction: column; gap: 0.75rem; padding: 1rem 4%; }
+  .nav-links { gap: 1rem; flex-wrap: wrap; justify-content: center; }
+  .hero h1 { font-size: 2rem; }
+  .hero-stats { flex-direction: column; gap: 1rem; }
+  .stat-divider { width: 30px; height: 1px; }
+  .form-row { grid-template-columns: 1fr; }
+}
+
+/* ===== Approval workflow & custodian console ===== */
+.status-badge.status-pending   { background: #FEF3C7; color: #B45309; }
+.status-badge.status-approved  { background: rgba(22,163,74,.1); color: var(--success-green); }
+.status-badge.status-rejected  { background: #FEE2E2; color: #B91C1C; }
+.status-badge.status-cancelled { background: #F1F5F9; color: var(--text-muted); }
+.admin-main { max-width: 1100px; }
+.admin-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 14px; padding: 2rem; max-width: 460px; margin: 2rem auto; }
+.admin-card h2 { margin-bottom: 1rem; font-size: 1.3rem; }
+.admin-card.add-admin { max-width: 460px; margin: 2.5rem 0 0; padding: 1rem 1.25rem; }
+.add-admin summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+.stack-form { margin-top: 1rem; }
+.admin-tabs { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.admin-tabs .count { font-weight: 700; margin-left: 0.2rem; }
+.admin-who { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+.btn-action.approve { border-color: var(--success-green); color: var(--success-green); }
+.btn-action.approve:hover { background: rgba(22,163,74,.08); border-color: var(--success-green); color: var(--success-green); }
+.admin-main .reservations-table td { vertical-align: top; }

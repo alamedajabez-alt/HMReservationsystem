@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'self'">
   <title>HM Lab Reserve | Hospitality Management Laboratory</title>
   <link rel="stylesheet" href="style.css">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -18,6 +19,7 @@
       <a href="#labs" class="active">Laboratories</a>
       <a href="#how-it-works">How It Works</a>
       <a href="#my-reservations" id="navReservations">My Bookings</a>
+      <a href="admin.html">Custodian Login</a>
       <a href="#labs" class="btn-quick-reserve">Quick Reserve</a>
     </div>
   </nav>
@@ -88,8 +90,8 @@
         </div>
         <div class="step-card">
           <div class="step-number">03</div>
-          <h3>Get Digital Pass</h3>
-          <p>Instantly receive your reference code and QR entry pass for seamless laboratory check-in.</p>
+          <h3>Get Approved &amp; Digital Pass</h3>
+          <p>Receive a reference code right away. Once the lab custodian approves your request, your QR entry pass is unlocked for check-in.</p>
         </div>
       </div>
     </section>
@@ -98,8 +100,13 @@
     <section class="my-reservations-section" id="my-reservations">
       <div class="section-header">
         <h2>Active Reservations</h2>
-        <p>View confirmed bookings and access your digital entry passes</p>
+        <p>Enter your ID to view your upcoming bookings and access your digital entry passes</p>
       </div>
+      <form class="lookup-form" id="lookupForm">
+        <label for="lookupStudentId">Student / Instructor ID</label>
+        <input type="text" id="lookupStudentId" placeholder="e.g., 2024-00123" maxlength="30" pattern="[A-Za-z0-9\-]{3,30}" autocomplete="off" required>
+        <button type="submit" class="btn-lookup">Show My Bookings</button>
+      </form>
       <div class="reservations-table-container">
         <table class="reservations-table">
           <thead>
@@ -127,9 +134,9 @@
   </footer>
 
   <!-- Booking Modal -->
-  <div class="modal-overlay" id="bookingModal">
+  <div class="modal-overlay" id="bookingModal" role="dialog" aria-modal="true" aria-label="Reservation form">
     <div class="modal">
-      <button class="close-btn" id="closeModal">&times;</button>
+      <button class="close-btn" id="closeModal" aria-label="Close">&times;</button>
       <div class="modal-header-tag">Reservation Form</div>
       <h2>Book: <span id="selectedLabTitle" class="red-text">Station Name</span></h2>
       
@@ -139,17 +146,17 @@
         <div class="form-row">
           <div class="form-group">
             <label for="studentName">Full Name</label>
-            <input type="text" id="studentName" placeholder="e.g., Maria Santos" required>
+            <input type="text" id="studentName" placeholder="e.g., Maria Santos" required minlength="2" maxlength="100" autocomplete="name">
           </div>
           <div class="form-group">
             <label for="studentId">Student / Instructor ID</label>
-            <input type="text" id="studentId" placeholder="e.g., 2024-00123" required>
+            <input type="text" id="studentId" placeholder="e.g., 2024-00123" required maxlength="30" pattern="[A-Za-z0-9\-]{3,30}" title="Letters, numbers and dashes only (3-30 characters)" autocomplete="off">
           </div>
         </div>
 
         <div class="form-group">
           <label for="courseCode">Course / Subject Code</label>
-          <input type="text" id="courseCode" placeholder="e.g., HM-101 Culinary Arts Fundamentals" required>
+          <input type="text" id="courseCode" placeholder="e.g., HM-101 Culinary Arts Fundamentals" required minlength="2" maxlength="100">
         </div>
 
         <div class="form-row">
@@ -161,9 +168,9 @@
             <label for="resTime">Time Shift</label>
             <select id="resTime" required>
               <option value="">Select Shift</option>
-              <option value="08:00 AM - 11:00 AM">Morning Shift (08:00 AM - 11:00 AM)</option>
-              <option value="01:00 PM - 04:00 PM">Afternoon Shift (01:00 PM - 04:00 PM)</option>
-              <option value="05:00 PM - 08:00 PM">Evening Shift (05:00 PM - 08:00 PM)</option>
+              <option value="08:00 AM - 11:00 AM" data-start="08:00">Morning Shift (08:00 AM - 11:00 AM)</option>
+              <option value="01:00 PM - 04:00 PM" data-start="13:00">Afternoon Shift (01:00 PM - 04:00 PM)</option>
+              <option value="05:00 PM - 08:00 PM" data-start="17:00">Evening Shift (05:00 PM - 08:00 PM)</option>
             </select>
           </div>
         </div>
@@ -171,22 +178,22 @@
         <div class="form-group">
           <label>Special Equipment / Add-on Checklist</label>
           <div class="equipment-checkbox-group" id="equipmentChecklist">
-            <label class="checkbox-label"><input type="checkbox" name="equipment" value="1"> Sous Vide Precision Cooker</label>
-            <label class="checkbox-label"><input type="checkbox" name="equipment" value="2"> Commercial Sous Chef Mixer</label>
-            <label class="checkbox-label"><input type="checkbox" name="equipment" value="3"> Espresso Grinder & Bar Tools</label>
+            <!-- Loaded from the database -->
           </div>
         </div>
 
-        <button type="submit" class="btn-submit">Confirm Reservation Request</button>
+        <p class="field-hint" id="slotHint" aria-live="polite"></p>
+        <div class="form-error" id="formError" role="alert" hidden></div>
+        <button type="submit" class="btn-submit" id="submitBtn">Submit Reservation Request</button>
       </form>
     </div>
   </div>
 
   <!-- Digital Pass Modal -->
-  <div class="modal-overlay" id="passModal">
+  <div class="modal-overlay" id="passModal" role="dialog" aria-modal="true" aria-label="Laboratory entry pass">
     <div class="modal pass-modal-content">
-      <button class="close-btn" id="closePassModal">&times;</button>
-      <div class="pass-badge-header">OFFICIAL LABORATORY ENTRY PASS</div>
+      <button class="close-btn" id="closePassModal" aria-label="Close">&times;</button>
+      <div class="pass-badge-header" id="passBadgeHeader">OFFICIAL LABORATORY ENTRY PASS</div>
       
       <div class="pass-card" id="printablePass">
         <div class="pass-header">
@@ -194,7 +201,7 @@
             <h3 id="passLabName">Culinary Station 01</h3>
             <span id="passRefCode" class="pass-ref">HM-RES-A1B2C</span>
           </div>
-          <div class="pass-qr-box">
+          <div class="pass-qr-box" id="passQr">
             <div class="simulated-qr"></div>
             <span>QR Pass</span>
           </div>
@@ -217,11 +224,15 @@
             <span>Date & Shift:</span>
             <strong id="passDateTime">2026-06-15 | Morning Shift</strong>
           </div>
+          <div class="pass-row">
+            <span>Status:</span>
+            <strong id="passStatus">Approved</strong>
+          </div>
         </div>
       </div>
 
       <div class="pass-actions">
-        <button class="btn-print" onclick="window.print()">Print Pass</button>
+        <button class="btn-print" id="printPassBtn">Print Pass</button>
         <button class="btn-done" id="closePassBtn">Done</button>
       </div>
     </div>

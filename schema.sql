@@ -1,4 +1,5 @@
--- schema.sql  (import in phpMyAdmin > Import, or: mysql -u root < schema.sql)
+-- schema.sql  (phpMyAdmin > Import, or: mysql -u root < schema.sql)
+-- Re-importing resets laboratories/equipment/reservations. Custodian accounts (admins) are KEPT.
 CREATE DATABASE IF NOT EXISTS hm_lab_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE hm_lab_db;
 
@@ -6,6 +7,18 @@ DROP TABLE IF EXISTS reservation_equipment;
 DROP TABLE IF EXISTS reservations;
 DROP TABLE IF EXISTS equipment;
 DROP TABLE IF EXISTS laboratories;
+
+CREATE TABLE IF NOT EXISTS admins (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(30) NOT NULL UNIQUE,
+  full_name VARCHAR(100) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  failed_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  locked_until DATETIME NULL,
+  last_login DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
 
 CREATE TABLE laboratories (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -31,15 +44,28 @@ CREATE TABLE reservations (
   course_code VARCHAR(100) NOT NULL,
   reservation_date DATE NOT NULL,
   time_shift VARCHAR(30) NOT NULL,
-  status ENUM('confirmed','cancelled') NOT NULL DEFAULT 'confirmed',
+  -- pending -> (custodian) approved | rejected ; student may cancel pending/approved
+  status ENUM('pending','approved','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  reviewed_by INT UNSIGNED NULL,
+  reviewed_at DATETIME NULL,
+  admin_note VARCHAR(255) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  -- Only one CONFIRMED booking per lab/date/shift; cancelled rows are ignored (NULLs are not unique-checked)
+
+  -- DOUBLE-BOOKING GUARD #1: one pending/approved booking per lab + date + shift.
   active_slot VARCHAR(60) GENERATED ALWAYS AS (
-    IF(status = 'confirmed', CONCAT(lab_id, '|', reservation_date, '|', time_shift), NULL)
+    IF(status IN ('pending','approved'), CONCAT(lab_id, '|', reservation_date, '|', time_shift), NULL)
+  ) STORED,
+  -- DOUBLE-BOOKING GUARD #2: one person can't hold two stations at the same date + shift.
+  student_slot VARCHAR(100) GENERATED ALWAYS AS (
+    IF(status IN ('pending','approved'), CONCAT(student_id, '|', reservation_date, '|', time_shift), NULL)
   ) STORED,
   UNIQUE KEY uq_active_slot (active_slot),
+  UNIQUE KEY uq_student_slot (student_slot),
   KEY idx_date (reservation_date),
-  CONSTRAINT fk_res_lab FOREIGN KEY (lab_id) REFERENCES laboratories(id)
+  KEY idx_status (status, reservation_date),
+  KEY idx_student (student_id, status, reservation_date),
+  CONSTRAINT fk_res_lab FOREIGN KEY (lab_id) REFERENCES laboratories(id),
+  CONSTRAINT fk_res_admin FOREIGN KEY (reviewed_by) REFERENCES admins(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE reservation_equipment (
@@ -50,7 +76,6 @@ CREATE TABLE reservation_equipment (
   CONSTRAINT fk_re_eq FOREIGN KEY (equipment_id) REFERENCES equipment(id)
 ) ENGINE=InnoDB;
 
--- IDs 1-3 match the checkboxes already in index.html
 INSERT INTO equipment (id, name) VALUES
  (1,'Sous Vide Precision Cooker'),
  (2,'Commercial Sous Chef Mixer'),
@@ -58,7 +83,6 @@ INSERT INTO equipment (id, name) VALUES
  (4,'Flambé Service Cart'),
  (5,'Housekeeping Linens Set');
 
--- category values must be: kitchen | bar | dining | hotel (the filter buttons use these)
 INSERT INTO laboratories (code, name, category, description, capacity) VALUES
  ('CK-01','Culinary Station A','kitchen','Full-range cooking station with prep counter and induction burners.',4),
  ('CK-02','Pastry & Bakeshop Station','kitchen','Marble bench with deck oven for breads, doughs and desserts.',6),

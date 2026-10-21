@@ -1,233 +1,318 @@
-// DOM Elements
-const labGrid = document.getElementById('labGrid');
-const filterBtns = document.querySelectorAll('.filter-btn');
-const bookingModal = document.getElementById('bookingModal');
-const closeModalBtn = document.getElementById('closeModal');
-const selectedLabTitle = document.getElementById('selectedLabTitle');
-const selectedLabIdInput = document.getElementById('selectedLabId');
-const bookingForm = document.getElementById('bookingForm');
-const reservationsTableBody = document.getElementById('reservationsTableBody');
+'use strict';
 
-const passModal = document.getElementById('passModal');
-const closePassModal = document.getElementById('closePassModal');
-const closePassBtn = document.getElementById('closePassBtn');
+/* ---------- Helpers ---------- */
+const $ = (id) => document.getElementById(id);
+const pad = (n) => String(n).padStart(2, '0');
+const toISODate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const MAX_DAYS_AHEAD = 60;
+const EMPTY_AVAIL = { booked_shifts: [], equipment_busy: {} };
 
-// Pass elements
-const passLabName = document.getElementById('passLabName');
-const passRefCode = document.getElementById('passRefCode');
-const passStudentName = document.getElementById('passStudentName');
-const passStudentId = document.getElementById('passStudentId');
-const passCourseCode = document.getElementById('passCourseCode');
-const passDateTime = document.getElementById('passDateTime');
+// Safe DOM builder: text is always inserted as text nodes (no innerHTML => no XSS)
+function h(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') node.className = v;
+    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  node.append(...children);
+  return node;
+}
 
-// 1. Fetch Laboratories from PHP Backend
-async function fetchLaboratories(category = 'all') {
+async function api(endpoint, { method = 'GET', body, query } = {}) {
+  if (location.protocol === 'file:') throw new Error('Open this site through http://localhost/ (XAMPP/WAMP), not by double-clicking the HTML file.');
+  const url = 'api/' + endpoint + (query ? '?' + new URLSearchParams(query) : '');
+  const res = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data;
+  try { data = await res.json(); } catch { throw new Error('The server did not return valid data. Open setup_check.php on the server to diagnose.'); }
+  if (!res.ok || !data.success) throw new Error(data.message || 'Request failed.');
+  return data;
+}
+
+/* ---------- State & elements ---------- */
+const state = {
+  labs: [], equipment: [], filter: 'all',
+  currentLab: null, availability: EMPTY_AVAIL, availToken: 0, studentId: '',
+};
+
+const labGrid = $('labGrid');
+const bookingModal = $('bookingModal');
+const passModal = $('passModal');
+const bookingForm = $('bookingForm');
+const shiftSelect = $('resTime');
+const dateInput = $('resDate');
+const formError = $('formError');
+const slotHint = $('slotHint');
+const submitBtn = $('submitBtn');
+const tbody = $('reservationsTableBody');
+
+/* ---------- Laboratories ---------- */
+async function loadLabs() {
   try {
-    const response = await fetch('api/get_labs.php');
-    const result = await response.json();
-    
-    if (result.success) {
-      renderLabs(result.data, category);
-    } else {
-      console.error('Failed to load labs:', result.message);
-    }
-  } catch (error) {
-    console.error('Network error fetching labs:', error);
+    state.labs = (await api('get_labs.php')).data;
+    renderLabs();
+  } catch (err) {
+    labGrid.replaceChildren(h('p', { class: 'empty-state' }, 'Could not load laboratories. ', err.message));
   }
 }
 
-// Render Lab Cards
-function renderLabs(labs, filter) {
-  labGrid.innerHTML = '';
-  
-  const filtered = filter === 'all' 
-    ? labs 
-    : labs.filter(lab => lab.category === filter);
-
-  if (filtered.length === 0) {
-    labGrid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: var(--text-muted);">No workstations available in this category.</p>`;
+function renderLabs() {
+  const list = state.filter === 'all' ? state.labs : state.labs.filter((l) => l.category === state.filter);
+  if (!list.length) {
+    labGrid.replaceChildren(h('p', { class: 'empty-state' }, 'No workstations available in this category.'));
     return;
   }
-
-  filtered.forEach(lab => {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <div>
-        <div class="card-header">
-          <span class="badge">Available</span>
-          <span style="font-size: 0.75rem; color: var(--text-muted);">Capacity: ${lab.capacity}</span>
-        </div>
-        <h3>${lab.name}</h3>
-        <p>${lab.description}</p>
-      </div>
-      <button class="btn-book" onclick="openBookingModal(${lab.id}, '${lab.name}')">Book Station</button>
-    `;
-    labGrid.appendChild(card);
-  });
+  labGrid.replaceChildren(...list.map((lab) =>
+    h('div', { class: 'card' },
+      h('div', {},
+        h('div', { class: 'card-header' },
+          h('span', { class: 'badge' }, 'Available'),
+          h('span', { class: 'row-sub' }, `Capacity: ${lab.capacity}`)),
+        h('h3', {}, lab.name),
+        h('p', {}, lab.description || '')),
+      h('button', { class: 'btn-book', type: 'button', onclick: () => openBookingModal(lab) }, 'Book Station'))
+  ));
 }
 
-// Filter Button Click Handler
-filterBtns.forEach(btn => {
+document.querySelectorAll('.filter-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    filterBtns.forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
-    fetchLaboratories(btn.dataset.filter);
+    state.filter = btn.dataset.filter;
+    renderLabs();
   });
 });
 
-// Open Booking Modal
-function openBookingModal(labId, labName) {
-  selectedLabIdInput.value = labId;
-  selectedLabTitle.textContent = labName;
-  bookingModal.classList.add('open');
+/* ---------- Equipment ---------- */
+async function loadEquipment() {
+  try {
+    state.equipment = (await api('get_equipment.php')).data;
+    $('equipmentChecklist').replaceChildren(...state.equipment.map((eq) =>
+      h('label', { class: 'checkbox-label', 'data-eq': eq.id },
+        h('input', { type: 'checkbox', name: 'equipment', value: eq.id }),
+        h('span', {}, eq.name))
+    ));
+  } catch {
+    $('equipmentChecklist').replaceChildren(h('span', { class: 'row-sub' }, 'Equipment list unavailable.'));
+  }
 }
 
-// Close Modals
-closeModalBtn.addEventListener('click', () => bookingModal.classList.remove('open'));
-closePassModal.addEventListener('click', () => passModal.classList.remove('open'));
-closePassBtn.addEventListener('click', () => passModal.classList.remove('open'));
+/* ---------- Booking modal & live availability ---------- */
+function openBookingModal(lab) {
+  state.currentLab = lab;
+  state.availability = EMPTY_AVAIL;
+  $('selectedLabId').value = lab.id;
+  $('selectedLabTitle').textContent = lab.name;
+  formError.hidden = true;
 
-bookingModal.addEventListener('click', (e) => {
-  if (e.target === bookingModal) bookingModal.classList.remove('open');
-});
-passModal.addEventListener('click', (e) => {
-  if (e.target === passModal) passModal.classList.remove('open');
-});
+  const now = new Date(), max = new Date();
+  max.setDate(max.getDate() + MAX_DAYS_AHEAD);
+  dateInput.min = toISODate(now);
+  dateInput.max = toISODate(max);
 
-// 2. Handle Form Submission to PHP Backend
+  if (state.studentId) $('studentId').value = state.studentId;
+  refreshSlotOptions();
+  bookingModal.classList.add('open');
+  $('studentName').focus();
+}
+
+async function loadAvailability() {
+  const date = dateInput.value;
+  if (!state.currentLab || !date) { state.availability = EMPTY_AVAIL; refreshSlotOptions(); return; }
+  const token = ++state.availToken;               // ignore out-of-order responses
+  try {
+    const res = await api('get_availability.php', { query: { lab_id: state.currentLab.id, date } });
+    if (token !== state.availToken) return;
+    state.availability = res.data;
+  } catch {
+    if (token !== state.availToken) return;
+    state.availability = EMPTY_AVAIL;
+  }
+  refreshSlotOptions();
+}
+
+function refreshSlotOptions() {
+  const date = dateInput.value;
+  const now = new Date();
+  const isToday = date === toISODate(now);
+  const hhmm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  let selectedBlocked = false, openCount = 0, total = 0;
+
+  [...shiftSelect.options].forEach((opt) => {
+    if (!opt.value) return;
+    if (!opt.dataset.label) opt.dataset.label = opt.textContent;
+    const booked = state.availability.booked_shifts.includes(opt.value);
+    const started = isToday && hhmm >= opt.dataset.start;
+    opt.disabled = booked || started;
+    opt.textContent = opt.dataset.label + (booked ? ' — Already booked' : started ? ' — Already started' : '');
+    total++;
+    if (!opt.disabled) openCount++;
+    if (opt.disabled && opt.selected) selectedBlocked = true;
+  });
+  if (selectedBlocked) shiftSelect.value = '';
+
+  slotHint.classList.remove('warn');
+  slotHint.textContent = '';
+  if (date && total && openCount === 0) {
+    slotHint.textContent = 'This station has no open shifts on this date. Please pick another date or station.';
+    slotHint.classList.add('warn');
+  } else if (date) {
+    slotHint.textContent = 'Shifts marked "Already booked" are taken (pending or approved) and cannot be selected.';
+  }
+  refreshEquipmentOptions();
+}
+
+function refreshEquipmentOptions() {
+  const busy = (state.availability.equipment_busy[shiftSelect.value] || []).map(Number);
+  document.querySelectorAll('#equipmentChecklist .checkbox-label').forEach((label) => {
+    const cb = label.querySelector('input');
+    const inUse = busy.includes(Number(cb.value));
+    cb.disabled = inUse;
+    if (inUse) cb.checked = false;
+    label.classList.toggle('disabled', inUse);
+    label.title = inUse ? 'Already reserved for this shift' : '';
+  });
+}
+
+dateInput.addEventListener('change', loadAvailability);
+shiftSelect.addEventListener('change', refreshEquipmentOptions);
+
+function closeBooking() { bookingModal.classList.remove('open'); }
+function closePass() { passModal.classList.remove('open'); }
+$('closeModal').addEventListener('click', closeBooking);
+$('closePassModal').addEventListener('click', closePass);
+$('closePassBtn').addEventListener('click', closePass);
+$('printPassBtn').addEventListener('click', () => window.print());
+bookingModal.addEventListener('click', (e) => { if (e.target === bookingModal) closeBooking(); });
+passModal.addEventListener('click', (e) => { if (e.target === passModal) closePass(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeBooking(); closePass(); } });
+
+/* ---------- Submit booking ---------- */
 bookingForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-
-  const lab_id = selectedLabIdInput.value;
-  const student_name = document.getElementById('studentName').value;
-  const student_id = document.getElementById('studentId').value;
-  const course_code = document.getElementById('courseCode').value;
-  const reservation_date = document.getElementById('resDate').value;
-  const time_shift = document.getElementById('resTime').value;
-
-  // Gather checked equipment IDs
-  const equipment_ids = [];
-  document.querySelectorAll('input[name="equipment"]:checked').forEach(cb => {
-    equipment_ids.push(parseInt(cb.value));
-  });
+  if (submitBtn.disabled) return;                 // blocks double-click / double-submit
+  formError.hidden = true;
 
   const payload = {
-    lab_id,
-    student_name,
-    student_id,
-    course_code,
-    reservation_date,
-    time_shift,
-    equipment_ids
+    lab_id: Number($('selectedLabId').value),
+    student_name: $('studentName').value.trim(),
+    student_id: $('studentId').value.trim().toUpperCase(),
+    course_code: $('courseCode').value.trim(),
+    reservation_date: dateInput.value,
+    time_shift: shiftSelect.value,
+    equipment_ids: [...document.querySelectorAll('input[name="equipment"]:checked')].map((cb) => Number(cb.value)),
   };
 
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Checking availability…';
   try {
-    const response = await fetch('api/create_reservation.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const result = await api('create_reservation.php', { method: 'POST', body: payload });
+
+    closeBooking();
+    bookingForm.reset();
+    showPass({
+      lab: state.currentLab.name, ref: result.data.ref_code, name: payload.student_name,
+      sid: payload.student_id, course: payload.course_code, when: `${payload.reservation_date} | ${payload.time_shift}`, status: 'pending',
     });
-
-    const result = await response.json();
-
-    if (result.success) {
-      bookingModal.classList.remove('open');
-      bookingForm.reset();
-
-      // Populate Digital Pass Modal
-      passLabName.textContent = selectedLabTitle.textContent;
-      passRefCode.textContent = result.data.ref_code;
-      passStudentName.textContent = student_name;
-      passStudentId.textContent = student_id;
-      passCourseCode.textContent = course_code;
-      passDateTime.textContent = `${reservation_date} | ${time_shift}`;
-
-      passModal.classList.add('open');
-      fetchReservations(); // Refresh table
-    } else {
-      alert(`Reservation Error: ${result.message}`);
-    }
-  } catch (error) {
-    console.error('Submission error:', error);
-    alert('Failed to connect to the server.');
+    setStudentId(payload.student_id);
+    fetchReservations();
+  } catch (err) {
+    formError.textContent = err.message;
+    formError.hidden = false;
+    loadAvailability();                            // someone may have just taken the slot: refresh the options
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Submit Reservation Request';
   }
 });
 
-// 3. Fetch Active Reservations for Table
-async function fetchReservations() {
-  try {
-    const response = await fetch('api/get_reservations.php');
-    const result = await response.json();
-
-    if (result.success) {
-      renderReservations(result.data);
-    }
-  } catch (error) {
-    console.error('Error fetching reservations:', error);
-  }
-}
-
-function renderReservations(reservations) {
-  reservationsTableBody.innerHTML = '';
-
-  if (reservations.length === 0) {
-    reservationsTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No active reservations found.</td></tr>`;
-    return;
-  }
-
-  reservations.forEach(res => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><strong>${res.ref_code}</strong></td>
-      <td>${res.student_name}</td>
-      <td>${res.lab_name}</td>
-      <td>${res.reservation_date}<br><small style="color:var(--text-muted);">${res.time_shift}</small></td>
-      <td><span class="status-badge">${res.status}</span></td>
-      <td>
-        <button class="btn-action" onclick="viewPass('${res.lab_name}', '${res.ref_code}', '${res.student_name}', '${res.student_id}', '${res.course_code}', '${res.reservation_date} | ${res.time_shift}')">View Pass</button>
-        <button class="btn-action cancel" onclick="cancelReservation(${res.id})">Cancel</button>
-      </td>
-    `;
-    reservationsTableBody.appendChild(tr);
-  });
-}
-
-// View Pass from Table
-function viewPass(labName, refCode, studentName, studentId, courseCode, dateTime) {
-  passLabName.textContent = labName;
-  passRefCode.textContent = refCode;
-  passStudentName.textContent = studentName;
-  passStudentId.textContent = studentId;
-  passCourseCode.textContent = courseCode;
-  passDateTime.textContent = dateTime;
+/* ---------- Digital pass ---------- */
+function showPass(p) {
+  const approved = p.status === 'approved';
+  $('passBadgeHeader').textContent = approved ? 'OFFICIAL LABORATORY ENTRY PASS' : 'REQUEST RECEIVED — AWAITING CUSTODIAN APPROVAL';
+  $('passStatus').textContent = approved ? 'Approved' : 'Pending approval';
+  $('passQr').hidden = !approved;
+  $('printPassBtn').hidden = !approved;
+  $('passLabName').textContent = p.lab;
+  $('passRefCode').textContent = p.ref;
+  $('passStudentName').textContent = p.name;
+  $('passStudentId').textContent = p.sid;
+  $('passCourseCode').textContent = p.course;
+  $('passDateTime').textContent = p.when;
   passModal.classList.add('open');
 }
 
-// 4. Cancel Reservation
-async function cancelReservation(id) {
-  if (!confirm('Are you sure you want to cancel this reservation?')) return;
+/* ---------- My reservations (scoped to the entered student ID) ---------- */
+function setStudentId(id) {
+  state.studentId = id;
+  $('lookupStudentId').value = id;
+  try { sessionStorage.setItem('hm_student_id', id); } catch { /* storage unavailable */ }
+}
 
+const messageRow = (text) => h('tr', {}, h('td', { colspan: '6', class: 'empty-cell' }, text));
+
+$('lookupForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  setStudentId($('lookupStudentId').value.trim().toUpperCase());
+  fetchReservations();
+});
+
+async function fetchReservations() {
+  if (!state.studentId) { tbody.replaceChildren(messageRow('Enter your ID above to see your bookings.')); return; }
   try {
-    const response = await fetch('api/cancel_reservation.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
-    });
-
-    const result = await response.json();
-    if (result.success) {
-      fetchReservations();
-    } else {
-      alert(`Error: ${result.message}`);
-    }
-  } catch (error) {
-    console.error('Cancel error:', error);
+    const res = await api('get_reservations.php', { method: 'POST', body: { student_id: state.studentId } });
+    renderReservations(res.data);
+  } catch (err) {
+    tbody.replaceChildren(messageRow(err.message));
   }
 }
 
-// Initialize on page load
+const STATUS_LABEL = { pending: 'Pending approval', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
+
+function renderReservations(rows) {
+  if (!rows.length) { tbody.replaceChildren(messageRow('No upcoming reservations found for this ID.')); return; }
+  tbody.replaceChildren(...rows.map((r) => {
+    const actions = [];
+    if (r.status === 'approved') {
+      actions.push(h('button', {
+        class: 'btn-action', type: 'button',
+        onclick: () => showPass({ lab: r.lab_name, ref: r.ref_code, name: r.student_name, sid: r.student_id,
+                                  course: r.course_code, when: `${r.reservation_date} | ${r.time_shift}`, status: r.status }),
+      }, 'View Pass'));
+    }
+    if (r.status === 'pending' || r.status === 'approved') {
+      actions.push(h('button', { class: 'btn-action cancel', type: 'button', onclick: () => cancelReservation(r.id) }, 'Cancel'));
+    }
+    return h('tr', {},
+      h('td', {}, h('strong', {}, r.ref_code)),
+      h('td', {}, r.student_name),
+      h('td', {}, r.lab_name, r.equipment ? h('small', { class: 'row-sub' }, `+ ${r.equipment}`) : ''),
+      h('td', {}, r.reservation_date, h('small', { class: 'row-sub' }, r.time_shift)),
+      h('td', {}, h('span', { class: `status-badge status-${r.status}` }, STATUS_LABEL[r.status] || r.status),
+        r.status === 'rejected' && r.admin_note ? h('small', { class: 'row-sub' }, `Reason: ${r.admin_note}`) : ''),
+      h('td', {}, ...actions));
+  }));
+}
+
+async function cancelReservation(id) {
+  if (!confirm('Are you sure you want to cancel this reservation?')) return;
+  try {
+    await api('cancel_reservation.php', { method: 'POST', body: { id, student_id: state.studentId } });
+    fetchReservations();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+/* ---------- Init ---------- */
 document.addEventListener('DOMContentLoaded', () => {
-  fetchLaboratories();
+  try { state.studentId = sessionStorage.getItem('hm_student_id') || ''; } catch { /* ignore */ }
+  $('lookupStudentId').value = state.studentId;
+  loadLabs();
+  loadEquipment();
   fetchReservations();
 });

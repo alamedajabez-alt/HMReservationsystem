@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'self'">
+  <meta name="robots" content="noindex">
+  <title>Custodian Console | HM Lab Reserve</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="logo"><span class="red-text">HM</span> CUSTODIAN CONSOLE</div>
+    <div class="nav-links">
+      <a href="index.html">&larr; Student Portal</a>
+      <span class="admin-who" id="adminWho" hidden></span>
+      <button class="btn-action" id="logoutBtn" type="button" hidden>Log out</button>
+    </div>
+  </nav>
+
+  <main class="container admin-main">
+    <div class="form-error" id="globalMsg" role="alert" hidden></div>
+
+    <!-- Login -->
+    <section class="admin-card" id="loginView" hidden>
+      <div class="modal-header-tag">Custodian access</div>
+      <h2>Log in</h2>
+      <form id="loginForm" class="stack-form">
+        <div class="form-group"><label for="loginUser">Username</label>
+          <input type="text" id="loginUser" autocomplete="username" required maxlength="30"></div>
+        <div class="form-group"><label for="loginPass">Password</label>
+          <input type="password" id="loginPass" autocomplete="current-password" required maxlength="200"></div>
+        <div class="form-error" id="loginMsg" role="alert" hidden></div>
+        <button class="btn-submit" type="submit">Log in</button>
+      </form>
+    </section>
+
+    <!-- First-time setup -->
+    <section class="admin-card" id="setupView" hidden>
+      <div class="modal-header-tag">First-time setup</div>
+      <h2>Create the first custodian account</h2>
+      <p class="field-hint">Enter the <code>setup_key</code> from <code>config.php</code> (change it from the default first).</p>
+      <form id="setupForm" class="stack-form">
+        <div class="form-group"><label for="setupKey">Setup key</label>
+          <input type="password" id="setupKey" required autocomplete="off"></div>
+        <div class="form-group"><label for="setupName">Full name</label>
+          <input type="text" id="setupName" required maxlength="100" autocomplete="name"></div>
+        <div class="form-group"><label for="setupUser">Username</label>
+          <input type="text" id="setupUser" required maxlength="30" pattern="[a-z0-9_.]{3,30}" title="3-30 lowercase letters, numbers, _ or ." autocomplete="username"></div>
+        <div class="form-group"><label for="setupPass">Password (min. 10 characters)</label>
+          <input type="password" id="setupPass" required minlength="10" maxlength="72" autocomplete="new-password"></div>
+        <div class="form-error" id="setupMsg" role="alert" hidden></div>
+        <button class="btn-submit" type="submit">Create account</button>
+      </form>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="dashView" hidden>
+      <div class="section-header">
+        <h2>Reservation Requests</h2>
+        <p>Approve or reject student bookings. Rejected requests free the slot immediately.</p>
+      </div>
+
+      <div class="admin-tabs" id="adminTabs">
+        <button class="filter-btn active" data-status="pending" type="button">Pending <span class="count" id="cnt-pending"></span></button>
+        <button class="filter-btn" data-status="approved" type="button">Approved <span class="count" id="cnt-approved"></span></button>
+        <button class="filter-btn" data-status="rejected" type="button">Rejected <span class="count" id="cnt-rejected"></span></button>
+        <button class="filter-btn" data-status="cancelled" type="button">Cancelled <span class="count" id="cnt-cancelled"></span></button>
+        <button class="filter-btn" data-status="all" type="button">All</button>
+      </div>
+
+      <div class="reservations-table-container">
+        <table class="reservations-table">
+          <thead><tr><th>Ref Code</th><th>Student</th><th>Station / Lab</th><th>Date &amp; Shift</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="adminTableBody"></tbody>
+        </table>
+      </div>
+
+      <details class="admin-card add-admin">
+        <summary>Add another custodian account</summary>
+        <form id="newAdminForm" class="stack-form">
+          <div class="form-group"><label for="newName">Full name</label><input type="text" id="newName" required maxlength="100"></div>
+          <div class="form-group"><label for="newUser">Username</label>
+            <input type="text" id="newUser" required maxlength="30" pattern="[a-z0-9_.]{3,30}" title="3-30 lowercase letters, numbers, _ or ." autocomplete="off"></div>
+          <div class="form-group"><label for="newPass">Password (min. 10 characters)</label>
+            <input type="password" id="newPass" required minlength="10" maxlength="72" autocomplete="new-password"></div>
+          <div class="form-error" id="newAdminMsg" role="alert" hidden></div>
+          <button class="btn-submit" type="submit">Create custodian</button>
+        </form>
+      </details>
+    </section>
+  </main>
+
+  <!-- Reject modal -->
+  <div class="modal-overlay" id="rejectModal" role="dialog" aria-modal="true" aria-label="Reject reservation">
+    <div class="modal">
+      <button class="close-btn" id="closeReject" aria-label="Close" type="button">&times;</button>
+      <div class="modal-header-tag">Reject reservation</div>
+      <h2 id="rejectTitle">Reject request</h2>
+      <div class="form-group">
+        <label for="rejectNote">Reason (shown to the student)</label>
+        <input type="text" id="rejectNote" maxlength="255" placeholder="e.g., Lab under maintenance on that day">
+      </div>
+      <div class="form-error" id="rejectMsg" role="alert" hidden></div>
+      <button class="btn-submit" id="confirmReject" type="button">Reject reservation</button>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>

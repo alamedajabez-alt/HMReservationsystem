@@ -1,70 +1,89 @@
 <?php
 // api/create_reservation.php
 require_once __DIR__ . '/../db.php';
+require_method('POST');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['success' => false, 'message' => 'Method not allowed.']);
-    exit();
-}
-
-function fail($msg, $code = 400) {
-    http_response_code($code);
-    echo json_encode(['success' => false, 'message' => $msg]);
-    exit();
-}
-
-$input = json_decode(file_get_contents('php://input'), true);
-if (!is_array($input)) fail('Invalid JSON input.');
+$input = read_json();
 
 $lab_id           = filter_var($input['lab_id'] ?? null, FILTER_VALIDATE_INT);
 $student_name     = trim((string)($input['student_name'] ?? ''));
-$student_id       = trim((string)($input['student_id'] ?? ''));
+$student_id       = normalize_student_id((string)($input['student_id'] ?? ''));
 $course_code      = trim((string)($input['course_code'] ?? ''));
 $reservation_date = (string)($input['reservation_date'] ?? '');
 $time_shift       = (string)($input['time_shift'] ?? '');
 $equipment_ids    = is_array($input['equipment_ids'] ?? null) ? $input['equipment_ids'] : [];
 
-$shifts = ['08:00 AM - 11:00 AM', '01:00 PM - 04:00 PM', '05:00 PM - 08:00 PM'];
-
+// ---------- Validation ----------
 if (!$lab_id || $student_name === '' || $student_id === '' || $course_code === '') fail('All required fields must be filled out.');
-if (mb_strlen($student_name) > 100 || mb_strlen($student_id) > 30 || mb_strlen($course_code) > 100) fail('One or more fields are too long.');
-if (!in_array($time_shift, $shifts, true)) fail('Invalid time shift.');
+if (!preg_match("/^[\p{L}\p{M} .,'\-]{2,100}$/u", $student_name))                  fail('Please enter a valid full name.');
+if (!valid_student_id($student_id))                                                 fail('Student ID may only contain letters, numbers and dashes (3-30 characters).');
+if (!preg_match("/^[\p{L}\p{N} .,'&()\/\-]{2,100}$/u", $course_code))               fail('Please enter a valid course / subject code.');
+if (!isset(SHIFTS[$time_shift]))                                                    fail('Invalid time shift.');
+if (!valid_date($reservation_date))                                                 fail('Invalid date.');
 
-$d = DateTime::createFromFormat('Y-m-d', $reservation_date);
-if (!$d || $d->format('Y-m-d') !== $reservation_date) fail('Invalid date.');
-if ($reservation_date < date('Y-m-d')) fail('Reservation date cannot be in the past.');
+$today = date('Y-m-d');
+if ($reservation_date < $today)                                                     fail('Reservation date cannot be in the past.');
+if ($reservation_date > date('Y-m-d', strtotime('+' . MAX_DAYS_AHEAD . ' days')))   fail('Reservations can only be made up to ' . MAX_DAYS_AHEAD . ' days ahead.');
+if ($reservation_date === $today && date('H:i') >= SHIFTS[$time_shift][0])          fail('That shift has already started. Please choose a later shift or date.');
 
-$equipment_ids = array_values(array_unique(array_filter(array_map('intval', $equipment_ids))));
+$equipment_ids = array_values(array_unique(array_filter(array_map('intval', $equipment_ids), fn($v) => $v > 0)));
+if (count($equipment_ids) > 20) fail('Too many equipment items selected.');
 
 try {
     $lab = $pdo->prepare("SELECT id FROM laboratories WHERE id = ? AND status = 'available'");
     $lab->execute([$lab_id]);
-    if (!$lab->fetch()) fail('That workstation does not exist or is unavailable.', 404);
+    if (!$lab->fetch()) throw new ApiError('That workstation does not exist or is unavailable.', 404);
 
     $pdo->beginTransaction();
 
-    // Retry on the rare ref_code collision; the UNIQUE slot index catches double-bookings
-    $insert = $pdo->prepare("
-        INSERT INTO reservations (ref_code, lab_id, student_name, student_id, course_code, reservation_date, time_shift)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ");
+    // 1) Per-student cap (anti-spam / hoarding)
+    $cnt = $pdo->prepare("SELECT COUNT(*) FROM reservations
+                          WHERE student_id = ? AND status IN ('pending','approved') AND reservation_date >= ?");
+    $cnt->execute([$student_id, $today]);
+    if ((int)$cnt->fetchColumn() >= MAX_ACTIVE_PER_STUDENT) {
+        throw new ApiError('You already have ' . MAX_ACTIVE_PER_STUDENT . ' upcoming reservations. Cancel one before booking another.', 429);
+    }
+
+    // 2) Equipment: lock rows (serializes concurrent bookings), verify they exist, and verify they're free for that shift
+    if ($equipment_ids) {
+        $in = implode(',', array_fill(0, count($equipment_ids), '?'));
+
+        $lock = $pdo->prepare("SELECT id FROM equipment WHERE id IN ($in) ORDER BY id FOR UPDATE");
+        $lock->execute($equipment_ids);
+        if (count($lock->fetchAll()) !== count($equipment_ids)) throw new ApiError('One or more selected equipment items do not exist.');
+
+        $busy = $pdo->prepare("SELECT DISTINCT e.name
+                               FROM reservation_equipment re
+                               JOIN reservations r ON r.id = re.reservation_id AND r.status IN ('pending','approved')
+                               JOIN equipment e ON e.id = re.equipment_id
+                               WHERE r.reservation_date = ? AND r.time_shift = ? AND re.equipment_id IN ($in)");
+        $busy->execute(array_merge([$reservation_date, $time_shift], $equipment_ids));
+        $taken = $busy->fetchAll(PDO::FETCH_COLUMN);
+        if ($taken) throw new ApiError('Already reserved for that shift: ' . implode(', ', $taken) . '. Please untick it or choose another shift.', 409);
+    }
+
+    // 3) Insert. The UNIQUE indexes uq_active_slot (lab+date+shift) and uq_student_slot (student+date+shift)
+    //    are the final, race-proof guard: two simultaneous requests can never both succeed.
+    $insert = $pdo->prepare("INSERT INTO reservations
+        (ref_code, lab_id, student_name, student_id, course_code, reservation_date, time_shift)
+        VALUES (?, ?, ?, ?, ?, ?, ?)");
+
     $ref_code = null;
-    for ($i = 0; $i < 5 && !$ref_code; $i++) {
-        $try = 'HM-RES-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 5));
+    for ($i = 0; $i < 5 && $ref_code === null; $i++) {
+        $try = 'HM-RES-' . strtoupper(bin2hex(random_bytes(4)));
         try {
             $insert->execute([$try, $lab_id, $student_name, $student_id, $course_code, $reservation_date, $time_shift]);
             $ref_code = $try;
         } catch (PDOException $e) {
-            if ($e->getCode() !== '23000') throw $e;
-            if (strpos($e->getMessage(), 'uq_active_slot') !== false) {
-                $pdo->rollBack();
-                fail('This workstation is already reserved for the selected date and time shift.', 409);
-            }
-            // otherwise ref_code collision: loop and try a new code
+            if (($e->errorInfo[1] ?? 0) !== 1062) throw $e;
+            $m = $e->getMessage();
+            if (strpos($m, 'uq_active_slot') !== false)  throw new ApiError('This workstation is already reserved for that date and shift. Please pick another shift or station.', 409);
+            if (strpos($m, 'uq_student_slot') !== false) throw new ApiError('You already have a reservation on that date and shift (in another station). One booking per shift only.', 409);
+            // otherwise: ref_code collision -> loop and generate a new one
         }
     }
-    if (!$ref_code) throw new RuntimeException('Could not generate reference code.');
+    if ($ref_code === null) throw new RuntimeException('Could not generate reference code.');
+
     $reservation_id = (int)$pdo->lastInsertId();
 
     if ($equipment_ids) {
@@ -74,9 +93,12 @@ try {
 
     $pdo->commit();
 
-    echo json_encode(['success' => true, 'message' => 'Reservation created successfully!',
-        'data' => ['id' => $reservation_id, 'ref_code' => $ref_code]]);
+    json_out(['success' => true, 'message' => 'Request submitted. It is now awaiting custodian approval.',
+              'data' => ['id' => $reservation_id, 'ref_code' => $ref_code, 'student_id' => $student_id, 'status' => 'pending']], 201);
 
+} catch (ApiError $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    fail($e->getMessage(), $e->getCode() ?: 400);
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     error_log('create_reservation: ' . $e->getMessage());
